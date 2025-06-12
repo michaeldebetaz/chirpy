@@ -6,17 +6,22 @@ import (
 	"net/http"
 
 	"github.com/michaeldebetaz/chirpy/internal/handlers"
+	"github.com/michaeldebetaz/chirpy/internal/middlewares"
 )
 
 func main() {
-	handler := http.ServeMux{}
+	mux := http.ServeMux{}
 
-	fileServer := http.FileServer(http.Dir("."))
-	handler.Handle("GET /app/", http.StripPrefix("/app/", fileServer))
-	handler.HandleFunc("GET /healthz", handlers.Healthz)
+	cfg := middlewares.NewConfig()
+
+	fileServerHandler := http.StripPrefix("/app/", http.FileServer(http.Dir(".")))
+	mux.Handle("GET /app/", cfg.IncrementFileserverHits(fileServerHandler))
+	mux.HandleFunc("GET /api/healthz", handlers.Healthz)
+	mux.Handle("GET /api/metrics", cfg.FileserverHits())
+	mux.Handle("POST /api/reset", cfg.ResetFileserverHits())
 
 	server := &http.Server{
-		Handler: &handler,
+		Handler: &mux,
 		Addr:    ":8080",
 	}
 
