@@ -1,50 +1,50 @@
 package middlewares
 
 import (
-	"fmt"
+	"context"
 	"net/http"
 	"sync/atomic"
 )
 
-type Config struct {
-	fileserverHits *atomic.Int32
+type contextKey string
+
+const HITS_KEY contextKey = "hits"
+
+type Middleware struct {
+	Hits *atomic.Int32
 }
 
-func (c *Config) IncrementFileserverHits(next http.Handler) http.Handler {
+func (m *Middleware) IncrementHits(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c.fileserverHits.Add(1)
+		m.Hits.Add(1)
 		next.ServeHTTP(w, r)
 	})
 }
 
-func (c *Config) FileserverHits() http.Handler {
+func (m *Middleware) WithHits(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits := c.fileserverHits.Load()
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
+		hits := m.Hits.Load()
+		ctx := context.WithValue(r.Context(), HITS_KEY, hits)
+		r = r.WithContext(ctx)
 
-		body := fmt.Sprintf("Hits: %d\n", hits)
-		if _, err := w.Write([]byte(body)); err != nil {
-			http.Error(w, "Failed to write response", http.StatusInternalServerError)
-		}
+		next.ServeHTTP(w, r)
 	})
 }
 
-func (c *Config) ResetFileserverHits() http.Handler {
+func (m *Middleware) ResetHits(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c.fileserverHits.Store(0)
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
+		m.Hits.Store(0)
 
-		body := fmt.Sprintf("Hits reset to 0\n")
-		if _, err := w.Write([]byte(body)); err != nil {
-			http.Error(w, "Failed to write response", http.StatusInternalServerError)
-		}
+		hits := m.Hits.Load()
+		ctx := context.WithValue(r.Context(), HITS_KEY, hits)
+		r = r.WithContext(ctx)
+
+		next.ServeHTTP(w, r)
 	})
 }
 
-func NewConfig() *Config {
-	return &Config{
-		fileserverHits: &atomic.Int32{},
+func New() *Middleware {
+	return &Middleware{
+		Hits: &atomic.Int32{},
 	}
 }
