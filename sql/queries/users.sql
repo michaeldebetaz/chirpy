@@ -24,6 +24,17 @@ FROM
 WHERE
     email = $1;
 
+-- name: UpdateUser :one
+UPDATE
+    users
+SET
+    email = $1,
+    password_hash = $2
+WHERE
+    id = $3
+RETURNING
+    *;
+
 -- name: DeleteAllUsers :exec
 DELETE FROM
     users;

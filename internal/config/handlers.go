@@ -8,13 +8,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/michaeldebetaz/chirpy/internal/auth"
 	"github.com/michaeldebetaz/chirpy/internal/database"
 	"github.com/michaeldebetaz/chirpy/internal/validators"
 )
 
-func (c *Config) ChirpLoader(w http.ResponseWriter, r *http.Request) {
-	chirpID, err := validators.UUID(r.PathValue("chirpID"))
+func (c *Config) ChirpGET(w http.ResponseWriter, r *http.Request) {
+	chirpIDStr := r.PathValue("chirpID")
+
+	chirpID, err := uuid.Parse(chirpIDStr)
 	if err != nil {
 		err := fmt.Errorf("failed to parse chirp ID: %w", err)
 		respondWithError(w, http.StatusBadRequest, err.Error())
@@ -36,7 +39,7 @@ func (c *Config) ChirpLoader(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, chirp)
 }
 
-func (c *Config) ChirpsLoader(w http.ResponseWriter, r *http.Request) {
+func (c *Config) ChirpsGET(w http.ResponseWriter, r *http.Request) {
 	chirps, err := c.Queries.GetChirps(r.Context())
 	if err != nil {
 		err := fmt.Errorf("failed to get chirps: %w", err)
@@ -47,29 +50,29 @@ func (c *Config) ChirpsLoader(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, chirps)
 }
 
-func (c *Config) ChirpsAction(w http.ResponseWriter, r *http.Request) {
-	token, err := auth.GetBearerToken(r.Header)
+func (c *Config) ChirpsPOST(w http.ResponseWriter, r *http.Request) {
+	accessToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		err := fmt.Errorf("failed to get bearer token: %w", err)
+		err := fmt.Errorf("failed to get bearer access token: %w", err)
 		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	userID, err := auth.ValidateJWT(token, c.Env.JWT_SECRET)
+	userID, err := auth.ValidateJWT(accessToken, c.Env.JWT_SECRET)
 	if err != nil {
 		err := fmt.Errorf("failed to validate JWT: %w", err)
 		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	requestBody := validators.ChirpsActionRequestBody{}
+	requestBody := validators.ChirpsPOSTRequestBody{}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		err := fmt.Errorf("failed to decode request body: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	data, err := validators.ChirpsAction(requestBody)
+	data, err := validators.ChirpsPOST(requestBody)
 	if err != nil {
 		err := fmt.Errorf("failed to validate chirp: %w", err)
 		respondWithError(w, http.StatusBadRequest, err.Error())
@@ -89,15 +92,15 @@ func (c *Config) ChirpsAction(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusCreated, chirp)
 }
 
-func (c *Config) LoginAction(w http.ResponseWriter, r *http.Request) {
-	requestBody := validators.LoginActionRequestBody{}
+func (c *Config) LoginPOST(w http.ResponseWriter, r *http.Request) {
+	requestBody := validators.LoginPOSTRequestBody{}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		err := fmt.Errorf("failed to decode request body: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	resultData, err := validators.LoginAction(requestBody)
+	resultData, err := validators.LoginPOST(requestBody)
 
 	user, err := c.Queries.GetUserByEmail(r.Context(), resultData.Email)
 	if err != nil {
@@ -117,7 +120,7 @@ func (c *Config) LoginAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.GenerateJWT(user.ID, c.Env.JWT_SECRET, resultData.ExpiresInSeconds)
+	accessToken, err := auth.GenerateJWT(user.ID, c.Env.JWT_SECRET, resultData.ExpiresInSeconds)
 	if err != nil {
 		err := fmt.Errorf("failed to generate JWT: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
@@ -140,7 +143,7 @@ func (c *Config) LoginAction(w http.ResponseWriter, r *http.Request) {
 	responseBody := map[string]any{
 		"id":            user.ID,
 		"email":         user.Email,
-		"token":         token,
+		"token":         accessToken,
 		"refresh_token": refereshToken.Token,
 		"created_at":    user.CreatedAt,
 		"updated_at":    user.UpdatedAt,
@@ -149,10 +152,10 @@ func (c *Config) LoginAction(w http.ResponseWriter, r *http.Request) {
 	respondWithJSON(w, http.StatusOK, responseBody)
 }
 
-func (c *Config) RefreshAction(w http.ResponseWriter, r *http.Request) {
+func (c *Config) RefreshPOST(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		err := fmt.Errorf("failed to get bearer token: %w", err)
+		err := fmt.Errorf("failed to get bearer refresh token: %w", err)
 		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
@@ -180,18 +183,18 @@ func (c *Config) RefreshAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expiresIn := time.Duration(60 * 60 * time.Second)
-	token, err := auth.GenerateJWT(row.User.ID, c.Env.JWT_SECRET, expiresIn)
+	accessToken, err := auth.GenerateJWT(row.User.ID, c.Env.JWT_SECRET, expiresIn)
 	if err != nil {
 		err := fmt.Errorf("failed to generate JWT: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	responseBody := map[string]any{"token": token}
+	responseBody := map[string]any{"token": accessToken}
 	respondWithJSON(w, http.StatusOK, responseBody)
 }
 
-func (c *Config) ResetAction(w http.ResponseWriter, r *http.Request) {
+func (c *Config) ResetPOST(w http.ResponseWriter, r *http.Request) {
 	if c.Env.PLATFORM != "dev" {
 		respondWithError(w, http.StatusForbidden, "Reset is only allowed in development mode")
 		return
@@ -214,7 +217,7 @@ func (c *Config) ResetAction(w http.ResponseWriter, r *http.Request) {
 func (c *Config) RevokeAction(w http.ResponseWriter, r *http.Request) {
 	refreshToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		err := fmt.Errorf("failed to get bearer token: %w", err)
+		err := fmt.Errorf("failed to get bearer refresh token: %w", err)
 		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
@@ -233,15 +236,15 @@ func (c *Config) RevokeAction(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (c *Config) UsersAction(w http.ResponseWriter, r *http.Request) {
-	requestBody := validators.UsersActionRequestBody{}
+func (c *Config) UsersPOST(w http.ResponseWriter, r *http.Request) {
+	requestBody := validators.UsersPOSTRequestBody{}
 	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 		err := fmt.Errorf("failed to decode request body: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	resultData, err := validators.UsersAction(requestBody)
+	resultData, err := validators.UsersPOST(requestBody)
 	if err != nil {
 		err := fmt.Errorf("failed to validate email: %w", err)
 		respondWithError(w, http.StatusBadRequest, err.Error())
@@ -266,6 +269,60 @@ func (c *Config) UsersAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusCreated, responseBody)
+}
+
+func (c *Config) UsersPUT(w http.ResponseWriter, r *http.Request) {
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		err := fmt.Errorf("failed to get bearer access token: %w", err)
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	requestBody := validators.UsersPUTRequestBody{}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		err := fmt.Errorf("failed to decode request body: %w", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	resultData, err := validators.UsersPUT(requestBody)
+	if err != nil {
+		err := fmt.Errorf("failed to validate email: %w", err)
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	userID, err := auth.ValidateJWT(accessToken, c.Env.JWT_SECRET)
+	if err != nil {
+		err := fmt.Errorf("failed to validate JWT: %w", err)
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	user, err := c.Queries.UpdateUser(r.Context(), database.UpdateUserParams{
+		Email:        resultData.Email,
+		PasswordHash: resultData.PasswordHash,
+		ID:           userID,
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err := fmt.Errorf("user not found: %w", err)
+			respondWithError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		err := fmt.Errorf("failed to update user: %w", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	responseBody := map[string]any{
+		"id":         user.ID,
+		"email":      user.Email,
+		"created_at": user.CreatedAt,
+		"updated_at": user.UpdatedAt,
+	}
+	respondWithJSON(w, http.StatusOK, responseBody)
 }
 
 func respondWithJSON(w http.ResponseWriter, statusCode int, data any) {

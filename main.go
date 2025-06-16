@@ -23,16 +23,17 @@ func main() {
 	mux.Handle("GET /app/", cfg.Mw.IncrementHits(fileServerHandler))
 
 	mux.Handle("GET /admin/metrics", cfg.Mw.WithHits(metrics))
-	mux.Handle("POST /admin/reset", cfg.Mw.ResetHits(cfg.ResetAction))
+	mux.Handle("POST /admin/reset", cfg.Mw.ResetHits(cfg.ResetPOST))
 
-	mux.HandleFunc("GET /api/chirps/{chirpID}", cfg.ChirpLoader)
-	mux.HandleFunc("GET /api/chirps", cfg.ChirpsLoader)
-	mux.HandleFunc("POST /api/chirps", cfg.ChirpsAction)
+	mux.HandleFunc("GET /api/chirps/{chirpID}", cfg.ChirpGET)
+	mux.HandleFunc("GET /api/chirps", cfg.ChirpsGET)
+	mux.HandleFunc("POST /api/chirps", cfg.ChirpsPOST)
 	mux.HandleFunc("GET /api/healthz", healthz)
-	mux.HandleFunc("POST /api/login", cfg.LoginAction)
-	mux.HandleFunc("POST /api/refresh", cfg.RefreshAction)
+	mux.HandleFunc("POST /api/login", cfg.LoginPOST)
+	mux.HandleFunc("POST /api/refresh", cfg.RefreshPOST)
 	mux.HandleFunc("POST /api/revoke", cfg.RevokeAction)
-	mux.HandleFunc("POST /api/users", cfg.UsersAction)
+	mux.HandleFunc("POST /api/users", cfg.UsersPOST)
+	mux.HandleFunc("PUT /api/users", cfg.UsersPUT)
 
 	server := &http.Server{
 		Handler: &mux,

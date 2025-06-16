@@ -4,31 +4,41 @@ import (
 	"time"
 )
 
-type ChirpsActionRequestBody struct {
+type ChirpsPOSTRequestBody struct {
 	Body string `json:"body"`
 }
 
-type ChirpsActionResultData struct {
+type ChirpsPOSTResultData struct {
 	Body string `json:"body"`
 }
 
-type LoginActionRequestBody struct {
+type LoginPOSTRequestBody struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
-type LoginActionResultData struct {
+type LoginPOSTResultData struct {
 	Email            string        `json:"email"`
 	Password         string        `json:"password"`
 	ExpiresInSeconds time.Duration `json:"expires_in_seconds"`
 }
 
-type UsersActionRequestBody struct {
+type UsersPOSTRequestBody struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
-type UsersActionResultData struct {
+type UsersPOSTResultData struct {
+	Email        string `json:"email"`
+	PasswordHash string `json:"password_hash"`
+}
+
+type UsersPUTRequestBody struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type UsersPUTResultData struct {
 	Email        string `json:"email"`
 	PasswordHash string `json:"password_hash"`
 }

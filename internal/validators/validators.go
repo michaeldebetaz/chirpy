@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/michaeldebetaz/chirpy/internal/auth"
 )
 
@@ -18,7 +17,7 @@ func BadWords() map[string]bool {
 	}
 }
 
-func ChirpsAction(chirp ChirpsActionRequestBody) (*ChirpsActionResultData, error) {
+func ChirpsPOST(chirp ChirpsPOSTRequestBody) (*ChirpsPOSTResultData, error) {
 	body := strings.TrimSpace(chirp.Body)
 
 	if len(body) > 140 {
@@ -38,10 +37,10 @@ func ChirpsAction(chirp ChirpsActionRequestBody) (*ChirpsActionResultData, error
 
 	body = strings.Join(words, " ")
 
-	return &ChirpsActionResultData{Body: body}, nil
+	return &ChirpsPOSTResultData{Body: body}, nil
 }
 
-func LoginAction(requestBody LoginActionRequestBody) (*LoginActionResultData, error) {
+func LoginPOST(requestBody LoginPOSTRequestBody) (*LoginPOSTResultData, error) {
 	emailAddress, err := mail.ParseAddress(requestBody.Email)
 	if err != nil {
 		err := fmt.Errorf("failed to parse email address '%s': %w", requestBody.Email, err)
@@ -53,14 +52,14 @@ func LoginAction(requestBody LoginActionRequestBody) (*LoginActionResultData, er
 		return nil, err
 	}
 
-	return &LoginActionResultData{
+	return &LoginPOSTResultData{
 		Email:            emailAddress.Address,
 		Password:         requestBody.Password,
 		ExpiresInSeconds: time.Duration(60 * 60 * time.Second),
 	}, nil
 }
 
-func UsersAction(requestBody UsersActionRequestBody) (*UsersActionResultData, error) {
+func UsersPOST(requestBody UsersPOSTRequestBody) (*UsersPOSTResultData, error) {
 	emailAddress, err := mail.ParseAddress(requestBody.Email)
 	if err != nil {
 		err := fmt.Errorf("failed to parse email address '%s': %w", requestBody.Email, err)
@@ -78,23 +77,37 @@ func UsersAction(requestBody UsersActionRequestBody) (*UsersActionResultData, er
 		return nil, err
 	}
 
-	return &UsersActionResultData{
+	return &UsersPOSTResultData{
 		Email:        emailAddress.Address,
 		PasswordHash: passwordHash,
 	}, nil
 }
 
-func UUID(u string) (uuid.UUID, error) {
-	if u == "" {
-		err := fmt.Errorf("UUID cannot be empty")
-		return uuid.Nil, err
+func UsersPUT(requestBody UsersPUTRequestBody) (*UsersPUTResultData, error) {
+	if requestBody.Email == "" {
+		err := fmt.Errorf("email cannot be empty")
+		return nil, err
 	}
 
-	id, err := uuid.Parse(u)
+	emailAddress, err := mail.ParseAddress(requestBody.Email)
 	if err != nil {
-		err := fmt.Errorf("failed to parse UUID '%s': %w", u, err)
-		return uuid.Nil, err
+		err := fmt.Errorf("failed to parse email address '%s': %w", requestBody.Email, err)
+		return nil, err
 	}
 
-	return id, nil
+	if requestBody.Password == "" {
+		err := fmt.Errorf("password cannot be empty")
+		return nil, err
+	}
+
+	passwordHash, err := auth.Hash(requestBody.Password)
+	if err != nil {
+		err := fmt.Errorf("failed to hash password: %w", err)
+		return nil, err
+	}
+
+	return &UsersPUTResultData{
+		Email:        emailAddress.Address,
+		PasswordHash: passwordHash,
+	}, nil
 }
