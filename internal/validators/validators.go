@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/michaeldebetaz/chirpy/internal/auth"
 )
 
 func BadWords() map[string]bool {
@@ -36,13 +38,50 @@ func ChirpsAction(chirp ChirpsActionRequestBody) (*ChirpsActionResultData, error
 
 	body = strings.Join(words, " ")
 
-	userID, err := uuid.Parse(chirp.UserID)
+	return &ChirpsActionResultData{Body: body}, nil
+}
+
+func LoginAction(requestBody LoginActionRequestBody) (*LoginActionResultData, error) {
+	emailAddress, err := mail.ParseAddress(requestBody.Email)
 	if err != nil {
-		err := fmt.Errorf("failed to parse user ID '%s': %w", chirp.UserID, err)
+		err := fmt.Errorf("failed to parse email address '%s': %w", requestBody.Email, err)
 		return nil, err
 	}
 
-	return &ChirpsActionResultData{Body: body, UserID: userID}, nil
+	if requestBody.Password == "" {
+		err := fmt.Errorf("password cannot be empty")
+		return nil, err
+	}
+
+	return &LoginActionResultData{
+		Email:            emailAddress.Address,
+		Password:         requestBody.Password,
+		ExpiresInSeconds: time.Duration(60 * 60 * time.Second),
+	}, nil
+}
+
+func UsersAction(requestBody UsersActionRequestBody) (*UsersActionResultData, error) {
+	emailAddress, err := mail.ParseAddress(requestBody.Email)
+	if err != nil {
+		err := fmt.Errorf("failed to parse email address '%s': %w", requestBody.Email, err)
+		return nil, err
+	}
+
+	if requestBody.Password == "" {
+		err := fmt.Errorf("password cannot be empty")
+		return nil, err
+	}
+
+	passwordHash, err := auth.Hash(requestBody.Password)
+	if err != nil {
+		err := fmt.Errorf("failed to hash password: %w", err)
+		return nil, err
+	}
+
+	return &UsersActionResultData{
+		Email:        emailAddress.Address,
+		PasswordHash: passwordHash,
+	}, nil
 }
 
 func UUID(u string) (uuid.UUID, error) {
@@ -58,16 +97,4 @@ func UUID(u string) (uuid.UUID, error) {
 	}
 
 	return id, nil
-}
-
-func Email(e string) (string, error) {
-	address, err := mail.ParseAddress(e)
-	if err != nil {
-		err := fmt.Errorf("failed to parse email address '%s': %w", e, err)
-		return "", err
-	}
-
-	email := address.Address
-
-	return email, nil
 }

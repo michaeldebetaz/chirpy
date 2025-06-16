@@ -11,21 +11,27 @@ import (
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO
-    users (email)
+    users (email, password_hash)
 VALUES
-    ($1)
+    ($1, $2)
 RETURNING
-    id, email, created_at, updated_at
+    id, email, created_at, updated_at, password_hash
 `
 
-func (q *Queries) CreateUser(ctx context.Context, email string) (User, error) {
-	row := q.db.QueryRowContext(ctx, createUser, email)
+type CreateUserParams struct {
+	Email        string `json:"email"`
+	PasswordHash string `json:"password_hash"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createUser, arg.Email, arg.PasswordHash)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.PasswordHash,
 	)
 	return i, err
 }
@@ -38,4 +44,61 @@ DELETE FROM
 func (q *Queries) DeleteAllUsers(ctx context.Context) error {
 	_, err := q.db.ExecContext(ctx, deleteAllUsers)
 	return err
+}
+
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT
+    id, email, created_at, updated_at, password_hash
+FROM
+    users
+WHERE
+    email = $1
+`
+
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PasswordHash,
+	)
+	return i, err
+}
+
+const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
+SELECT
+    users.id, users.email, users.created_at, users.updated_at, users.password_hash,
+    refresh_tokens.token, refresh_tokens.user_id, refresh_tokens.expires_at, refresh_tokens.revoked_at, refresh_tokens.created_at, refresh_tokens.updated_at
+FROM
+    users
+    INNER JOIN refresh_tokens ON users.id = refresh_tokens.user_id
+WHERE
+    refresh_tokens.token = $1
+`
+
+type GetUserByRefreshTokenRow struct {
+	User         User         `json:"user"`
+	RefreshToken RefreshToken `json:"refresh_token"`
+}
+
+func (q *Queries) GetUserByRefreshToken(ctx context.Context, token string) (GetUserByRefreshTokenRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserByRefreshToken, token)
+	var i GetUserByRefreshTokenRow
+	err := row.Scan(
+		&i.User.ID,
+		&i.User.Email,
+		&i.User.CreatedAt,
+		&i.User.UpdatedAt,
+		&i.User.PasswordHash,
+		&i.RefreshToken.Token,
+		&i.RefreshToken.UserID,
+		&i.RefreshToken.ExpiresAt,
+		&i.RefreshToken.RevokedAt,
+		&i.RefreshToken.CreatedAt,
+		&i.RefreshToken.UpdatedAt,
+	)
+	return i, err
 }

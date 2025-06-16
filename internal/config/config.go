@@ -1,4 +1,4 @@
-package state
+package config
 
 import (
 	"database/sql"
@@ -9,30 +9,28 @@ import (
 	"github.com/michaeldebetaz/chirpy/internal/middlewares"
 )
 
-type State struct {
+type Config struct {
 	Env     *dotenv.Env
 	Mw      *middlewares.Middleware
-	Db      *sql.DB
 	Queries *database.Queries
 }
 
-func Init() (*State, error) {
+func Init() (*Config, error) {
 	env, err := dotenv.LoadEnv()
 	if err != nil {
-		err := fmt.Errorf("Error loading environment variables: %v", err)
+		err := fmt.Errorf("error loading environment variables: %v", err)
 		return nil, err
 	}
 
 	db, err := sql.Open("postgres", env.DB_URL)
 	if err != nil {
-		err := fmt.Errorf("Error connecting to the database: %v", err)
+		err := fmt.Errorf("error connecting to the database: %v", err)
 		return nil, err
 	}
 
-	return &State{
+	return &Config{
 		Env:     env,
 		Mw:      middlewares.New(),
-		Db:      db,
 		Queries: database.New(db),
 	}, nil
 }
