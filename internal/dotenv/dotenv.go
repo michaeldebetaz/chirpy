@@ -8,13 +8,19 @@ import (
 )
 
 type Env struct {
-	DB_URL     string
-	JWT_SECRET string
-	PLATFORM   string
+	PolkaKey  string
+	DBUrl     string
+	JWTSecret string
+	Platform  string
 }
 
 func LoadEnv() (*Env, error) {
 	godotenv.Load(".env")
+
+	polkaKey, err := GetEnv("POLKA_KEY")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load POLKA_KEY: %w", err)
+	}
 
 	dbURL, err := GetEnv("DB_URL")
 	if err != nil {
@@ -31,7 +37,12 @@ func LoadEnv() (*Env, error) {
 		return nil, fmt.Errorf("failed to load PLATFORM: %w", err)
 	}
 
-	return &Env{DB_URL: dbURL, JWT_SECRET: jwtSecret, PLATFORM: platform}, nil
+	return &Env{
+		PolkaKey:  polkaKey,
+		DBUrl:     dbURL,
+		JWTSecret: jwtSecret,
+		Platform:  platform,
+	}, nil
 }
 
 func GetEnv(key string) (string, error) {

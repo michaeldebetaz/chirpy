@@ -32,6 +32,17 @@ func Hash(password string) (string, error) {
 	return string(bytes), nil
 }
 
+func GetPolkaKey(headers http.Header) (string, error) {
+	authHeader := headers.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("missing Authorization header")
+	}
+
+	apiKey := strings.TrimPrefix(authHeader, "ApiKey ")
+
+	return apiKey, nil
+}
+
 func GenerateRefreshToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {

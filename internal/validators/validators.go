@@ -3,9 +3,12 @@ package validators
 import (
 	"fmt"
 	"net/mail"
+	"net/url"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/michaeldebetaz/chirpy/internal/auth"
 )
 
@@ -15,6 +18,38 @@ func BadWords() map[string]bool {
 		"sharbert":  true,
 		"fornax":    true,
 	}
+}
+
+func ChirpsGETQuery(v url.Values) (ChirpsGETQueryValues, error) {
+	values := ChirpsGETQueryValues{
+		AuthorID: uuid.Nil,
+		Order:    Order{By: "created_at", Sort: "asc"},
+	}
+
+	authorIDStr := v.Get("author_id")
+	if authorIDStr != "" {
+		authorID, err := uuid.Parse(authorIDStr)
+		if err != nil {
+			err := fmt.Errorf("failed to parse user_id '%s': %w", authorIDStr, err)
+			return values, err
+		}
+
+		values.AuthorID = authorID
+	}
+
+	sort := v.Get("sort")
+	if sort != "" {
+		if !slices.Contains([]string{"asc", "desc"}, sort) {
+			err := fmt.Errorf("invalid sort value '%s', must be 'asc' or 'desc'", sort)
+			return values, err
+		}
+
+		if sort == "desc" {
+			values.Order.Sort = "desc"
+		}
+	}
+
+	return values, nil
 }
 
 func ChirpsPOST(chirp ChirpsPOSTRequestBody) (*ChirpsPOSTResultData, error) {
@@ -56,6 +91,23 @@ func LoginPOST(requestBody LoginPOSTRequestBody) (*LoginPOSTResultData, error) {
 		Email:            emailAddress.Address,
 		Password:         requestBody.Password,
 		ExpiresInSeconds: time.Duration(60 * 60 * time.Second),
+	}, nil
+}
+
+func PolkaWebhooksPOST(requestBody PolkaWebhooksPOSTRequestBody) (*PolkaWebhooksPOSTResultData, error) {
+	if requestBody.Event != UserUpgraded.String() {
+		return nil, fmt.Errorf("event '%s' is not '%s'", requestBody.Event, UserUpgraded)
+	}
+
+	userID, err := uuid.Parse(requestBody.Data.UserID)
+	if err != nil {
+		err := fmt.Errorf("failed to parse user_id '%s': %w", requestBody.Data.UserID, err)
+		return nil, err
+	}
+
+	return &PolkaWebhooksPOSTResultData{
+		Event:  UserUpgraded,
+		UserID: userID,
 	}, nil
 }
 

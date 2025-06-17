@@ -17,7 +17,7 @@ INSERT INTO
 VALUES
     ($1, $2)
 RETURNING
-    id, email, created_at, updated_at, password_hash
+    id, email, created_at, updated_at, password_hash, is_chirpy_red
 `
 
 type CreateUserParams struct {
@@ -34,6 +34,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PasswordHash,
+		&i.IsChirpyRed,
 	)
 	return i, err
 }
@@ -50,7 +51,7 @@ func (q *Queries) DeleteAllUsers(ctx context.Context) error {
 
 const getUserByEmail = `-- name: GetUserByEmail :one
 SELECT
-    id, email, created_at, updated_at, password_hash
+    id, email, created_at, updated_at, password_hash, is_chirpy_red
 FROM
     users
 WHERE
@@ -66,13 +67,37 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PasswordHash,
+		&i.IsChirpyRed,
+	)
+	return i, err
+}
+
+const getUserByID = `-- name: GetUserByID :one
+SELECT
+    id, email, created_at, updated_at, password_hash, is_chirpy_red
+FROM
+    users
+WHERE
+    id = $1
+`
+
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRowContext(ctx, getUserByID, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.PasswordHash,
+		&i.IsChirpyRed,
 	)
 	return i, err
 }
 
 const getUserByRefreshToken = `-- name: GetUserByRefreshToken :one
 SELECT
-    users.id, users.email, users.created_at, users.updated_at, users.password_hash,
+    users.id, users.email, users.created_at, users.updated_at, users.password_hash, users.is_chirpy_red,
     refresh_tokens.token, refresh_tokens.user_id, refresh_tokens.expires_at, refresh_tokens.revoked_at, refresh_tokens.created_at, refresh_tokens.updated_at
 FROM
     users
@@ -95,6 +120,7 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, token string) (GetU
 		&i.User.CreatedAt,
 		&i.User.UpdatedAt,
 		&i.User.PasswordHash,
+		&i.User.IsChirpyRed,
 		&i.RefreshToken.Token,
 		&i.RefreshToken.UserID,
 		&i.RefreshToken.ExpiresAt,
@@ -103,6 +129,20 @@ func (q *Queries) GetUserByRefreshToken(ctx context.Context, token string) (GetU
 		&i.RefreshToken.UpdatedAt,
 	)
 	return i, err
+}
+
+const markUserAsChirpyRed = `-- name: MarkUserAsChirpyRed :exec
+UPDATE
+    users
+SET
+    is_chirpy_red = TRUE
+WHERE
+    id = $1
+`
+
+func (q *Queries) MarkUserAsChirpyRed(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, markUserAsChirpyRed, id)
+	return err
 }
 
 const updateUser = `-- name: UpdateUser :one
@@ -114,7 +154,7 @@ SET
 WHERE
     id = $3
 RETURNING
-    id, email, created_at, updated_at, password_hash
+    id, email, created_at, updated_at, password_hash, is_chirpy_red
 `
 
 type UpdateUserParams struct {
@@ -132,6 +172,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.PasswordHash,
+		&i.IsChirpyRed,
 	)
 	return i, err
 }

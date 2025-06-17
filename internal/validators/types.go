@@ -2,7 +2,27 @@ package validators
 
 import (
 	"time"
+
+	"github.com/google/uuid"
 )
+
+const UserUpgraded Event = "user.upgraded"
+
+type Event string
+
+func (e Event) String() string {
+	return string(e)
+}
+
+type Order struct {
+	By   string
+	Sort string
+}
+
+type ChirpsGETQueryValues struct {
+	AuthorID uuid.UUID `json:"user_id"`
+	Order    Order     `json:"order"`
+}
 
 type ChirpsPOSTRequestBody struct {
 	Body string `json:"body"`
@@ -21,6 +41,18 @@ type LoginPOSTResultData struct {
 	Email            string        `json:"email"`
 	Password         string        `json:"password"`
 	ExpiresInSeconds time.Duration `json:"expires_in_seconds"`
+}
+
+type PolkaWebhooksPOSTRequestBody struct {
+	Event string `json:"event"`
+	Data  struct {
+		UserID string `json:"user_id"`
+	} `json:"data"`
+}
+
+type PolkaWebhooksPOSTResultData struct {
+	Event  Event     `json:"event"`
+	UserID uuid.UUID `json:"user_id"`
 }
 
 type UsersPOSTRequestBody struct {

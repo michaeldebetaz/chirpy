@@ -18,6 +18,18 @@ WHERE
 SELECT
     *
 FROM
+    chirps;
+
+-- name: GetChirpsByUserID :many
+SELECT
+    *
+FROM
     chirps
-ORDER BY
-    created_at ASC;
+WHERE
+    user_id = $1;
+
+-- name: DeleteChirp :exec
+DELETE FROM
+    chirps
+WHERE
+    id = $1;

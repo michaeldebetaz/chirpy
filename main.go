@@ -20,16 +20,18 @@ func main() {
 	mux := http.ServeMux{}
 
 	fileServerHandler := http.StripPrefix("/app/", http.FileServer(http.Dir(".")))
-	mux.Handle("GET /app/", cfg.Mw.IncrementHits(fileServerHandler))
+	mux.Handle("GET /app/", cfg.Middlewares.IncrementHits(fileServerHandler))
 
-	mux.Handle("GET /admin/metrics", cfg.Mw.WithHits(metrics))
-	mux.Handle("POST /admin/reset", cfg.Mw.ResetHits(cfg.ResetPOST))
+	mux.Handle("GET /admin/metrics", cfg.Middlewares.WithHits(metrics))
+	mux.Handle("POST /admin/reset", cfg.Middlewares.ResetHits(cfg.ResetPOST))
 
 	mux.HandleFunc("GET /api/chirps/{chirpID}", cfg.ChirpGET)
 	mux.HandleFunc("GET /api/chirps", cfg.ChirpsGET)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", cfg.ChirpDELETE)
 	mux.HandleFunc("POST /api/chirps", cfg.ChirpsPOST)
 	mux.HandleFunc("GET /api/healthz", healthz)
 	mux.HandleFunc("POST /api/login", cfg.LoginPOST)
+	mux.HandleFunc("POST /api/polka/webhooks", cfg.PolkaWebhooksPOST)
 	mux.HandleFunc("POST /api/refresh", cfg.RefreshPOST)
 	mux.HandleFunc("POST /api/revoke", cfg.RevokeAction)
 	mux.HandleFunc("POST /api/users", cfg.UsersPOST)

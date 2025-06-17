@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,14 +41,94 @@ func (c *Config) ChirpGET(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Config) ChirpsGET(w http.ResponseWriter, r *http.Request) {
-	chirps, err := c.Queries.GetChirps(r.Context())
+	v, err := validators.ChirpsGETQuery(r.URL.Query())
+
+	chirps := []database.Chirp{}
+
+	if v.AuthorID != uuid.Nil {
+		chirps, err = c.Queries.GetChirpsByUserID(r.Context(), v.AuthorID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				err := fmt.Errorf("no chirps found for user_id %s: %w", v.AuthorID, err)
+				respondWithError(w, http.StatusNotFound, err.Error())
+				return
+			}
+			err := fmt.Errorf("failed to get chirps by user ID: %w", err)
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	chirps, err = c.Queries.GetChirps(r.Context())
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondWithError(w, http.StatusNotFound, "no chirps found")
+			return
+		}
 		err := fmt.Errorf("failed to get chirps: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	slices.SortStableFunc(chirps, func(prev, next database.Chirp) int {
+		if v.Order.Sort == "asc" {
+			return prev.CreatedAt.Compare(next.CreatedAt)
+		}
+		return next.CreatedAt.Compare(prev.CreatedAt)
+	})
+
 	respondWithJSON(w, http.StatusOK, chirps)
+}
+
+func (c *Config) ChirpDELETE(w http.ResponseWriter, r *http.Request) {
+	accessToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		err := fmt.Errorf("failed to get bearer access token: %w", err)
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	userID, err := auth.ValidateJWT(accessToken, c.Env.JWTSecret)
+	if err != nil {
+		err := fmt.Errorf("failed to validate JWT: %w", err)
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	chirpIDStr := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(chirpIDStr)
+	if err != nil {
+		err := fmt.Errorf("failed to parse chirp ID: %w", err)
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	chirp, err := c.Queries.GetChirpByID(r.Context(), chirpID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err := fmt.Errorf("chirp not found: %w", err)
+			respondWithError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		err := fmt.Errorf("failed to get chirp: %w", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if chirp.UserID != userID {
+		err := fmt.Errorf("chirp does not belong to the user")
+		respondWithError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	if err := c.Queries.DeleteChirp(r.Context(), chirpID); err != nil {
+		err := fmt.Errorf("failed to delete chirp: %w", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (c *Config) ChirpsPOST(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +139,7 @@ func (c *Config) ChirpsPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := auth.ValidateJWT(accessToken, c.Env.JWT_SECRET)
+	userID, err := auth.ValidateJWT(accessToken, c.Env.JWTSecret)
 	if err != nil {
 		err := fmt.Errorf("failed to validate JWT: %w", err)
 		respondWithError(w, http.StatusUnauthorized, err.Error())
@@ -120,7 +201,7 @@ func (c *Config) LoginPOST(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := auth.GenerateJWT(user.ID, c.Env.JWT_SECRET, resultData.ExpiresInSeconds)
+	accessToken, err := auth.GenerateJWT(user.ID, c.Env.JWTSecret, resultData.ExpiresInSeconds)
 	if err != nil {
 		err := fmt.Errorf("failed to generate JWT: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
@@ -143,6 +224,7 @@ func (c *Config) LoginPOST(w http.ResponseWriter, r *http.Request) {
 	responseBody := map[string]any{
 		"id":            user.ID,
 		"email":         user.Email,
+		"is_chirpy_red": user.IsChirpyRed,
 		"token":         accessToken,
 		"refresh_token": refereshToken.Token,
 		"created_at":    user.CreatedAt,
@@ -150,6 +232,60 @@ func (c *Config) LoginPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, responseBody)
+}
+
+func (c *Config) PolkaWebhooksPOST(w http.ResponseWriter, r *http.Request) {
+	polkaKey, err := auth.GetPolkaKey(r.Header)
+	if err != nil {
+		err := fmt.Errorf("failed to get API key: %w", err)
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	if polkaKey != c.Env.PolkaKey {
+		respondWithError(w, http.StatusUnauthorized, "invalid API key")
+		return
+	}
+
+	requestBody := validators.PolkaWebhooksPOSTRequestBody{}
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		err := fmt.Errorf("failed to decode request body: %w", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if requestBody.Event != validators.UserUpgraded.String() {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	resultData, err := validators.PolkaWebhooksPOST(requestBody)
+	if err != nil {
+		err := fmt.Errorf("failed to validate webhook data: %w", err)
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if _, err := c.Queries.GetUserByID(r.Context(), resultData.UserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			err := fmt.Errorf("user not found: %w", err)
+			respondWithError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		err := fmt.Errorf("failed to get user: %w", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if err = c.Queries.MarkUserAsChirpyRed(r.Context(), resultData.UserID); err != nil {
+		err := fmt.Errorf("failed to mark user as ChirpyRed: %w", err)
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (c *Config) RefreshPOST(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +319,7 @@ func (c *Config) RefreshPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	expiresIn := time.Duration(60 * 60 * time.Second)
-	accessToken, err := auth.GenerateJWT(row.User.ID, c.Env.JWT_SECRET, expiresIn)
+	accessToken, err := auth.GenerateJWT(row.User.ID, c.Env.JWTSecret, expiresIn)
 	if err != nil {
 		err := fmt.Errorf("failed to generate JWT: %w", err)
 		respondWithError(w, http.StatusInternalServerError, err.Error())
@@ -195,7 +331,7 @@ func (c *Config) RefreshPOST(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *Config) ResetPOST(w http.ResponseWriter, r *http.Request) {
-	if c.Env.PLATFORM != "dev" {
+	if c.Env.Platform != "dev" {
 		respondWithError(w, http.StatusForbidden, "Reset is only allowed in development mode")
 		return
 	}
@@ -262,10 +398,11 @@ func (c *Config) UsersPOST(w http.ResponseWriter, r *http.Request) {
 	}
 
 	responseBody := map[string]any{
-		"id":         user.ID,
-		"email":      user.Email,
-		"created_at": user.CreatedAt,
-		"updated_at": user.UpdatedAt,
+		"id":            user.ID,
+		"email":         user.Email,
+		"is_chirpy_red": user.IsChirpyRed,
+		"created_at":    user.CreatedAt,
+		"updated_at":    user.UpdatedAt,
 	}
 
 	respondWithJSON(w, http.StatusCreated, responseBody)
@@ -293,7 +430,7 @@ func (c *Config) UsersPUT(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := auth.ValidateJWT(accessToken, c.Env.JWT_SECRET)
+	userID, err := auth.ValidateJWT(accessToken, c.Env.JWTSecret)
 	if err != nil {
 		err := fmt.Errorf("failed to validate JWT: %w", err)
 		respondWithError(w, http.StatusUnauthorized, err.Error())

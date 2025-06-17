@@ -10,9 +10,9 @@ import (
 )
 
 type Config struct {
-	Env     *dotenv.Env
-	Mw      *middlewares.Middleware
-	Queries *database.Queries
+	Env         *dotenv.Env
+	Middlewares *middlewares.Middleware
+	Queries     *database.Queries
 }
 
 func Init() (*Config, error) {
@@ -22,15 +22,15 @@ func Init() (*Config, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("postgres", env.DB_URL)
+	db, err := sql.Open("postgres", env.DBUrl)
 	if err != nil {
 		err := fmt.Errorf("error connecting to the database: %v", err)
 		return nil, err
 	}
 
 	return &Config{
-		Env:     env,
-		Mw:      middlewares.New(),
-		Queries: database.New(db),
+		Env:         env,
+		Middlewares: middlewares.New(),
+		Queries:     database.New(db),
 	}, nil
 }

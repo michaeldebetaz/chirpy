@@ -34,4 +34,5 @@ type User struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	PasswordHash string    `json:"password_hash"`
+	IsChirpyRed  bool      `json:"is_chirpy_red"`
 }
